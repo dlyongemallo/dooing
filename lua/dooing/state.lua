@@ -19,11 +19,41 @@ local function update_priority_weights()
 	end
 end
 
+-- Deterministic JSON encoder with sorted keys for idempotent saves
+local function encode_json(val)
+	local t = type(val)
+	if t == "string" then
+		return '"' .. val:gsub('\\', '\\\\'):gsub('"', '\\"'):gsub('\n', '\\n'):gsub('\r', '\\r'):gsub('\t', '\\t') .. '"'
+	elseif t == "number" or t == "boolean" then
+		return tostring(val)
+	elseif t == "table" then
+		if #val > 0 then
+			local parts = {}
+			for i, v in ipairs(val) do
+				parts[i] = encode_json(v)
+			end
+			return "[" .. table.concat(parts, ",") .. "]"
+		else
+			local keys = {}
+			for k in pairs(val) do
+				keys[#keys + 1] = k
+			end
+			table.sort(keys)
+			local parts = {}
+			for i, k in ipairs(keys) do
+				parts[i] = '"' .. k .. '":' .. encode_json(val[k])
+			end
+			return "{" .. table.concat(parts, ",") .. "}"
+		end
+	end
+	return "null"
+end
+
 local function save_todos()
 	local save_path = M.current_save_path or config.options.save_path
 	local file = io.open(save_path, "w")
 	if file then
-		file:write(vim.fn.json_encode(M.todos))
+		file:write(encode_json(M.todos))
 		file:close()
 	end
 end
@@ -34,7 +64,7 @@ M.save_todos_to_current_path = function()
 	local save_path = M.current_save_path or config.options.save_path
 	local file = io.open(save_path, "w")
 	if file then
-		file:write(vim.fn.json_encode(M.todos))
+		file:write(encode_json(M.todos))
 		file:close()
 	end
 end
@@ -817,7 +847,7 @@ function M.export_todos(file_path)
 		return false, "Could not open file for writing: " .. file_path
 	end
 
-	local json_content = vim.fn.json_encode(M.todos)
+	local json_content = encode_json(M.todos)
 	file:write(json_content)
 	file:close()
 
